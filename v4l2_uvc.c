@@ -219,13 +219,18 @@ int init_device (int fd, int width, int height, int fps)
 
 	struct v4l2_streamparm* setfps;
 	setfps=(struct v4l2_streamparm *) calloc(1, sizeof(struct v4l2_streamparm));
+	if (!setfps) {
+		fprintf (stderr, "setfps, Out of memory\n");
+		goto err;
+	}
+
 	memset(setfps, 0, sizeof(struct v4l2_streamparm));
 	setfps->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	setfps->parm.capture.timeperframe.numerator = 1;
 	setfps->parm.capture.timeperframe.denominator = fps;
 	if(ioctl(fd, VIDIOC_S_PARM, setfps) < 0){
 		printf("set fps fail\n");
-		goto err;
+		goto err2;
 	}
 
 	CLEAR (req);
@@ -235,18 +240,18 @@ int init_device (int fd, int width, int height, int fps)
 
 	if (-1 == ioctl (fd, VIDIOC_REQBUFS, &req)) {
 		fprintf (stderr, "VIDIOC_QUERYCAP fail\n");
-		goto err;
+		goto err2;
 	}
 
 	if (req.count < 2) {
 		fprintf (stderr, "Insufficient buffer memory\n");
-		goto err;
+		goto err2;
 	}
 
 	buffers = calloc (req.count, sizeof (*buffers));
 	if (!buffers) {
 		fprintf (stderr, "buffers, Out of memory\n");
-		goto err;
+		goto err2;
 	}
 
 	for (n_buffers = 0; n_buffers < req.count; ++n_buffers) {
@@ -260,7 +265,7 @@ int init_device (int fd, int width, int height, int fps)
 
 		if (-1 == ioctl (fd, VIDIOC_QUERYBUF, &buf)) {
 			fprintf (stderr, "VIDIOC_QUERYCAP fail\n");
-			goto err2;
+			goto err3;
 		}
 
 		buffers[n_buffers].length = buf.length;
@@ -273,13 +278,13 @@ int init_device (int fd, int width, int height, int fps)
 
 		if (MAP_FAILED == buffers[n_buffers].start) {
 			fprintf (stderr, "mmap fail\n");
-			goto err2;
+			goto err3;
 		}
 	}
 
 	return 0;
 
-err2:
+err3:
 	if (n_buffers > 0) {
 		for (i = (n_buffers-1); i >= 0; i--) {
 			munmap(buffers[i].start, buffers[i].length);
@@ -287,6 +292,8 @@ err2:
 	}
 
 	free(buffers);
+err2:
+	free(setfps);
 err:
         return -1;
 }
