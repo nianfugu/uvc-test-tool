@@ -1,7 +1,7 @@
 EXE=uvc-test-x86_64
 
-COMMON_LIB=/data2/ngu/work/test
-COMMON_BIN=/data2/ngu/work/test/bin
+COMMON_LIB=/home/gunianfu/work/test
+COMMON_BIN=/home/gunianfu/work/test/bin
 
 CC=gcc
 
@@ -10,10 +10,10 @@ SRC=$(wildcard *.c)
 OBJ=$(patsubst %.c,%.o,$(SRC))
 DEP=$(patsubst %.c,.%.d,$(SRC))
 
-CFLAGS=-g -O0 -I$(COMMON_LIB)/libv4l/x86_64/include
+CFLAGS=-g -O0 -I$(COMMON_LIB)/libv4l/x86_64_static/include
 #V4L2LIBS = $(shell pkg-config --libs libv4l2)
-V4L2LIBS = -L$(COMMON_LIB)/libv4l/x86_64/lib -lv4l2 \
-		   -L$(COMMON_LIB)/libv4l/x86_64/lib -lv4lconvert \
+V4L2LIBS = -L$(COMMON_LIB)/libv4l/x86_64_static/lib -lv4l2 \
+		   -L$(COMMON_LIB)/libv4l/x86_64_static/lib -lv4lconvert \
 			-lrt -lm -lpthread
 $(EXE):$(OBJ)
 	$(CC) $(CFLAGS) $^ -o $(COMMON_BIN)/$@ $(V4L2LIBS) 

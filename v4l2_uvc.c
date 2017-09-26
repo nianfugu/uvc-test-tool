@@ -11,14 +11,20 @@
 #include <malloc.h>
 #include <sys/mman.h>
 
-#define CAMERA_DEV "/dev/video0"
+#define CAMERA_DEV "/dev/video14"
 #define NB_BUFFER	16
 #define PIC_NUM		30
-#define PIC_WIDTH	640	//320
-#define PIC_HEIGHT	480	//240
+#define PIC_WIDTH	640	//1280	//640	//320
+#define PIC_HEIGHT	480	//720	//480	//240
 #define FPS		30
 
 #define YUV2RGB
+
+#ifdef YUV2RGB
+#define RGB888
+#define RGB565
+#endif
+
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 
 
@@ -40,25 +46,34 @@ static int		camera_fd	= -1;
 
 unsigned int convert_yuv_to_rgb_pixel(int y, int u, int v)
 {
-    unsigned int pixel32 = 0;
-    unsigned char *pixel = (unsigned char *)&pixel32;
-    int r, g, b;
+	unsigned int pixel32 = 0;
+	unsigned char *pixel = (unsigned char *)&pixel32;
+	int r, g, b;
 
-    r = y + (1.370705 * (v-128));
-    g = y - (0.698001 * (v-128)) - (0.337633 * (u-128));
-    b = y + (1.732446 * (u-128));
-    if(r > 255) r = 255;
-    if(g > 255) g = 255;
-    if(b > 255) b = 255;
-    if(r < 0) r = 0;
-    if(g < 0) g = 0;
-    if(b < 0) b = 0;
-    pixel[0] = r ;
-    pixel[1] = g ;
-    pixel[2] = b ;
+	r = y + (1.370705 * (v-128));
+	g = y - (0.698001 * (v-128)) - (0.337633 * (u-128));
+	b = y + (1.732446 * (u-128));
+
+	if(r > 255) r = 255;
+	if(g > 255) g = 255;
+	if(b > 255) b = 255;
+
+	if(r < 0) r = 0;
+	if(g < 0) g = 0;
+	if(b < 0) b = 0;
+
+#ifdef RGB888
+	pixel[0] = r ;
+	pixel[1] = g ;
+	pixel[2] = b ;
+#else
+	pixel[0] = ((g >> 2) << 5) | (b >> 3) ;
+	pixel[1] = ((r >> 3) << 3) | (g >> 5) ;
+#endif
 
     return pixel32;
 }
+
 
 unsigned int convert_yuv_to_rgb_buffer(unsigned char *yuv,
 					unsigned char *rgb,
@@ -82,6 +97,7 @@ unsigned int convert_yuv_to_rgb_buffer(unsigned char *yuv,
 		y1 = (pixel_16 & 0x00ff0000) >> 16;
 		v  = (pixel_16 & 0xff000000) >> 24;
 
+
 		pixel32 = convert_yuv_to_rgb_pixel(y0, u, v);
 		pixel_24[0] = (pixel32 & 0x000000ff);
 		pixel_24[1] = (pixel32 & 0x0000ff00) >> 8;
@@ -89,7 +105,9 @@ unsigned int convert_yuv_to_rgb_buffer(unsigned char *yuv,
 
 		rgb[out++] = pixel_24[0];
 		rgb[out++] = pixel_24[1];
+#ifdef RGB888
 		rgb[out++] = pixel_24[2];
+#endif
 
 		pixel32 = convert_yuv_to_rgb_pixel(y1, u, v);
 		pixel_24[0] = (pixel32 & 0x000000ff);
@@ -98,7 +116,9 @@ unsigned int convert_yuv_to_rgb_buffer(unsigned char *yuv,
 
 		rgb[out++] = pixel_24[0];
 		rgb[out++] = pixel_24[1];
+#ifdef RGB888
 		rgb[out++] = pixel_24[2];
+#endif
 	}
 
 	return 0;
@@ -187,7 +207,11 @@ int init_device (int fd, int width, int height, int fps)
 	fmt.fmt.pix.width       = width;
 	fmt.fmt.pix.height      = height;
 	//    init_mem_repo();
+#ifdef YUV2RGB
+	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+#else
 	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+#endif
 	fmt.fmt.pix.field       = V4L2_FIELD_INTERLACED;
 
 	if (-1 == ioctl (fd, VIDIOC_S_FMT, &fmt)){
@@ -372,7 +396,13 @@ int main(void)
 	unsigned char* yuv;
 	unsigned char* rgb;
 
-	rgb = malloc(PIC_WIDTH*PIC_HEIGHT*3);
+	rgb = malloc(
+#ifdef RGB888
+			PIC_WIDTH*PIC_HEIGHT*3
+#else
+			PIC_WIDTH*PIC_HEIGHT*2
+#endif
+);
 	if (!rgb) {
 		printf("rgb, Out of memory\n");
 		ret = -1;
@@ -415,9 +445,15 @@ int main(void)
 		if(r!=0) {
 
 #ifdef YUV2RGB
-			sprintf(file,"./pic/pic%d.raw",i);
+			sprintf(file,"./pic/pic%d.data",i);
 			yuv = fm->data;
-			memset(rgb, 0, PIC_WIDTH*PIC_HEIGHT*3);
+			memset(rgb, 0,
+#ifdef RGB888
+				PIC_WIDTH*PIC_HEIGHT*3
+#else
+				PIC_WIDTH*PIC_HEIGHT*2
+#endif
+				);
 
 			//printf("before yuv2rgb\n");
 			convert_yuv_to_rgb_buffer(yuv, rgb, PIC_WIDTH, PIC_HEIGHT);
@@ -425,7 +461,15 @@ int main(void)
 
 			outfile_fd = fopen(file, "w");
 			printf("write %s\n", file);
-			fwrite(rgb, PIC_WIDTH*PIC_HEIGHT*3, 1, outfile_fd);
+			fwrite(rgb,
+#ifdef RGB888
+				PIC_WIDTH*PIC_HEIGHT*3,
+#else
+				PIC_WIDTH*PIC_HEIGHT*2,
+#endif
+				1,
+				outfile_fd);
+
 			fclose(outfile_fd);
 #else
 			sprintf(file,"./pic/pic%d.jpg",i);
